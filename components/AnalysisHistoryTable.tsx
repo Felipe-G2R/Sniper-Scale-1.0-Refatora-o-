@@ -1,7 +1,7 @@
 import React from 'react';
 // FIX: Import `AnalysisResult` to resolve module export error.
 import type { AnalysisResult, AnalysisModel } from '../types';
-import { EyeIcon } from './icons';
+import { EyeIcon, TrashIcon } from './icons';
 import { useAnalysisManager } from '../hooks/useAnalysisManager';
 
 interface AnalysisHistoryTableProps {
@@ -40,7 +40,7 @@ const ModelTag: React.FC<{ model: AnalysisModel }> = ({ model }) => {
 
 
 const AnalysisHistoryTable: React.FC<AnalysisHistoryTableProps> = ({ history }) => {
-  const { reviewAnalysis } = useAnalysisManager();
+  const { reviewAnalysis, deleteAnalysis } = useAnalysisManager();
   
   if (history.length === 0) {
     return <p className="text-gray-500 text-center py-4">Nenhuma análise no período selecionado.</p>;
@@ -94,9 +94,12 @@ const AnalysisHistoryTable: React.FC<AnalysisHistoryTableProps> = ({ history }) 
                 </td>
                 <td className={`px-6 py-4 font-bold ${scoreColor}`}>{scoreText}</td>
                 <td className="px-6 py-4">{new Date(item.id).toLocaleDateString()}</td>
-                <td className="px-6 py-4 text-right">
+                <td className="px-6 py-4 text-right flex justify-end gap-1">
                   <button onClick={() => reviewAnalysis(item.id)} className="p-2 text-gray-400 hover:text-cyan-400" title="Revisar">
                     <EyeIcon className="w-5 h-5" />
+                  </button>
+                  <button onClick={() => deleteAnalysis(item.id)} className="p-2 text-gray-400 hover:text-red-400" title="Excluir">
+                    <TrashIcon className="w-5 h-5" />
                   </button>
                 </td>
               </tr>

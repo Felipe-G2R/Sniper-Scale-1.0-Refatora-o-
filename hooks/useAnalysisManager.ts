@@ -1,13 +1,107 @@
-import { useContext, useCallback } from 'react';
+import { useContext, useCallback, useEffect } from 'react';
 import { AnalysisContext } from '../AnalysisContext';
 import { generateAnalysis, extractTextFromPdf, generateSecondCallComparison } from '../lib/gemini';
 import type { View, AnalysisModel, AnalysisResult, User, Settings, AuthView, RelatorioCirurgicoData, AnaliseSegundaCall } from '../types';
 import { knowledgeDB } from '../lib/firebase';
 import { ref, get } from 'firebase/database';
-import { AnalysisService, type AnalysisRecord, type AnalysisType, type ModelId } from '../lib/supabase';
+import { AnalysisService, type AnalysisRecord, type AnalysisType, type ModelId, isSupabaseAvailable } from '../lib/supabase';
+import { ANALYSIS_MODELS } from '../constants';
 
 
 // --- Helper Functions ---
+
+/**
+ * Converte um registro do Supabase para o formato AnalysisResult do frontend
+ */
+const convertSupabaseToAnalysisResult = (record: AnalysisRecord): AnalysisResult => {
+    // Encontra o modelo correspondente
+    const model = ANALYSIS_MODELS.find(m => m.id === record.model_id) || {
+        id: record.model_id,
+        title: record.model_title,
+        description: record.model_description || '',
+        tags: record.model_tags || [],
+        type: record.type
+    };
+
+    // Os dados brutos já contêm a estrutura completa da análise
+    const rawData = record.raw_data || {};
+
+    return {
+        ...rawData,
+        id: record.legacy_id || Date.now(),
+        fileName: record.file_name,
+        model: model as AnalysisModel,
+        type: record.type as AnalysisResult['type'],
+        closerName: record.closer_name || rawData.closerName || 'N/A',
+        totalScore: record.total_score || rawData.totalScore,
+        totalMaxScore: record.total_max_score || rawData.totalMaxScore || 250,
+        // Dados específicos
+        behavioralIndicators: record.behavioral_profile?.indicators || rawData.behavioralIndicators || [],
+        feedbackCS: record.cs_feedback?.feedback || rawData.feedbackCS,
+        referrals: record.referrals || rawData.referrals || [],
+        // Segunda call (para relatório cirúrgico)
+        analiseSegundaCall: record.second_call_analysis || rawData.analiseSegundaCall,
+    } as AnalysisResult;
+};
+
+/**
+ * Carrega todas as análises do Supabase
+ */
+const loadAnalysesFromSupabase = async (): Promise<AnalysisResult[]> => {
+    if (!isSupabaseAvailable()) {
+        console.log('[SUPABASE] Não disponível - usando histórico local');
+        return [];
+    }
+
+    try {
+        console.log('[SUPABASE] Carregando análises...');
+        const { data, error } = await AnalysisService.getAll(undefined, { limit: 100 });
+
+        if (error || !data) {
+            console.warn('[SUPABASE] Erro ao carregar análises:', error);
+            return [];
+        }
+
+        console.log(`[SUPABASE] ${data.length} análises carregadas`);
+        return data.map(convertSupabaseToAnalysisResult);
+    } catch (err) {
+        console.error('[SUPABASE] Exceção ao carregar análises:', err);
+        return [];
+    }
+};
+
+/**
+ * Deleta uma análise do Supabase (soft delete)
+ */
+const deleteAnalysisFromSupabase = async (legacyId: number): Promise<boolean> => {
+    if (!isSupabaseAvailable()) {
+        return false;
+    }
+
+    try {
+        // Busca a análise pelo legacy_id
+        const { data: analysis, error: fetchError } = await AnalysisService.getByLegacyId(legacyId);
+
+        if (fetchError || !analysis) {
+            console.warn(`[SUPABASE] Análise não encontrada para legacy_id ${legacyId}`);
+            return false;
+        }
+
+        // Faz o soft delete
+        const { success, error } = await AnalysisService.delete(analysis.id!);
+
+        if (!success) {
+            console.warn(`[SUPABASE] Erro ao deletar análise: ${error}`);
+            return false;
+        }
+
+        console.log(`[SUPABASE] Análise ${analysis.id} deletada com sucesso`);
+        return true;
+    } catch (err) {
+        console.error('[SUPABASE] Exceção ao deletar análise:', err);
+        return false;
+    }
+};
 
 const getResultTypeFromModel = (model: AnalysisModel): AnalysisResult['type'] => {
     switch (model.id) {
@@ -369,6 +463,59 @@ export const useAnalysisManager = () => {
       dispatch({ type: 'SET_DATE_FILTER', payload: { startDate, endDate }});
   }, [dispatch]);
 
+  /**
+   * Carrega o histórico de análises do Supabase
+   */
+  const loadHistory = useCallback(async () => {
+      try {
+          console.log('[HOOK] Iniciando carregamento do histórico...');
+          const analyses = await loadAnalysesFromSupabase();
+
+          if (analyses.length > 0) {
+              dispatch({ type: 'LOAD_HISTORY_SUCCESS', payload: analyses });
+              console.log(`[HOOK] ${analyses.length} análises carregadas no estado`);
+          }
+      } catch (err) {
+          console.error('[HOOK] Erro ao carregar histórico:', err);
+      }
+  }, [dispatch]);
+
+  /**
+   * Deleta uma análise (local e no Supabase)
+   */
+  const deleteAnalysis = useCallback((analysisId: number) => {
+      dispatch({
+          type: 'SHOW_CONFIRMATION',
+          payload: {
+              title: 'Excluir Análise',
+              message: 'Tem certeza de que deseja excluir esta análise? Esta ação não pode ser desfeita.',
+              onConfirm: async () => {
+                  dispatch({ type: 'HIDE_CONFIRMATION' });
+
+                  // Remove do estado local
+                  const updatedHistory = state.analysisHistory.filter(a => a.id !== analysisId);
+                  dispatch({ type: 'LOAD_HISTORY_SUCCESS', payload: updatedHistory });
+
+                  // Se estiver visualizando a análise deletada, volta pro dashboard
+                  if (state.analysisResult?.id === analysisId) {
+                      dispatch({ type: 'NAVIGATE', payload: 'dashboard' });
+                  }
+
+                  // Remove do Supabase em background
+                  deleteAnalysisFromSupabase(analysisId).catch(() => {
+                      // Erro já logado na função
+                  });
+
+                  showNotification('Análise excluída com sucesso.', 'success');
+              },
+          },
+      });
+  }, [dispatch, showNotification, state.analysisHistory, state.analysisResult]);
+
+  // Carrega o histórico do Supabase ao montar o hook
+  useEffect(() => {
+      loadHistory();
+  }, [loadHistory]);
 
   return {
     state,
@@ -387,5 +534,7 @@ export const useAnalysisManager = () => {
     updateUserInfo,
     updateSettings,
     setDateFilter,
+    loadHistory,
+    deleteAnalysis,
   };
 };
