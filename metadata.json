@@ -1,0 +1,7 @@
+{
+  "name": "Sniper Scale Dashboard",
+  "description": "A sophisticated dashboard for analyzing sales call performance with AI-driven insights, featuring advanced data visualizations and real-time metrics tracking, inspired by the Sniper Scale design philosophy.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
