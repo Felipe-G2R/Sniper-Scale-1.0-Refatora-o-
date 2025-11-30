@@ -13,6 +13,12 @@ export interface User {
   email: string | null;
   avatarUrl: string;
   phone: string;
+  // Dados da empresa
+  company?: string;
+  cnpj?: string;
+  segment?: string;
+  teamSize?: string;
+  website?: string;
 }
 
 export interface Settings {

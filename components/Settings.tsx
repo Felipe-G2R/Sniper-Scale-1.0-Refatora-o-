@@ -1,11 +1,14 @@
 import React, { useState } from 'react';
 import type { SettingsTab } from '../types';
-import { 
-    BuildingOfficeIcon, BellIcon, 
+import {
+    BuildingOfficeIcon, BellIcon,
     ComputerDesktopIcon, ShieldCheckIcon
 } from './icons';
 import ProfileCard from './settings/ProfileCard';
 import SystemSettingsTab from './settings/SystemSettingsTab';
+import CompanySettingsTab from './settings/CompanySettingsTab';
+import NotificationsSettingsTab from './settings/NotificationsSettingsTab';
+import SecuritySettingsTab from './settings/SecuritySettingsTab';
 import { useAnalysisManager } from '../hooks/useAnalysisManager';
 
 const Settings: React.FC = () => {
@@ -30,11 +33,11 @@ const Settings: React.FC = () => {
   const renderTabContent = () => {
       switch(activeTab) {
           case 'empresa':
-              return <div className="p-6 text-gray-400">Gerencie as informações da sua empresa. Funcionalidade a ser implementada.</div>;
+              return <CompanySettingsTab />;
           case 'notificacoes':
-              return <div className="p-6 text-gray-400">Configure suas preferências de notificação. Funcionalidade a ser implementada.</div>;
+              return <NotificationsSettingsTab />;
           case 'seguranca':
-              return <div className="p-6 text-gray-400">Ajustes de senha e autenticação de dois fatores. Funcionalidade a ser implementada.</div>;
+              return <SecuritySettingsTab />;
           case 'sistema':
               return <SystemSettingsTab />;
           default:

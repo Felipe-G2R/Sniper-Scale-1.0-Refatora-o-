@@ -11,10 +11,12 @@ import { ANALYSIS_MODELS } from '../constants';
 // --- Helper Functions ---
 
 /**
- * Converte um registro do Supabase para o formato AnalysisResult do frontend
+ * Converte um registro do Supabase para o formato AnalysisResult do frontend.
+ * Os dados brutos (raw_data) já contêm a estrutura completa da análise original,
+ * então fazemos merge com metadados atualizados do banco.
  */
 const convertSupabaseToAnalysisResult = (record: AnalysisRecord): AnalysisResult => {
-    // Encontra o modelo correspondente
+    // Encontra o modelo correspondente nas constantes
     const model = ANALYSIS_MODELS.find(m => m.id === record.model_id) || {
         id: record.model_id,
         title: record.model_title,
@@ -24,24 +26,30 @@ const convertSupabaseToAnalysisResult = (record: AnalysisRecord): AnalysisResult
     };
 
     // Os dados brutos já contêm a estrutura completa da análise
-    const rawData = record.raw_data || {};
+    const rawData = (record.raw_data || {}) as Record<string, unknown>;
 
-    return {
+    // Monta o resultado base com os dados do Supabase tendo prioridade
+    const result = {
         ...rawData,
+        // Metadados obrigatórios
         id: record.legacy_id || Date.now(),
         fileName: record.file_name,
         model: model as AnalysisModel,
-        type: record.type as AnalysisResult['type'],
-        closerName: record.closer_name || rawData.closerName || 'N/A',
-        totalScore: record.total_score || rawData.totalScore,
-        totalMaxScore: record.total_max_score || rawData.totalMaxScore || 250,
-        // Dados específicos
-        behavioralIndicators: record.behavioral_profile?.indicators || rawData.behavioralIndicators || [],
+        type: record.type,
+        closerName: record.closer_name || (rawData.closerName as string) || 'N/A',
+        // Pontuação
+        totalScore: record.total_score ?? (rawData.totalScore as number) ?? 0,
+        totalMaxScore: record.total_max_score ?? (rawData.totalMaxScore as number) ?? 250,
+        // Dados específicos que podem vir do banco ou do raw_data
+        behavioralIndicators: record.behavioral_profile?.indicators || (rawData.behavioralIndicators as unknown[]) || [],
         feedbackCS: record.cs_feedback?.feedback || rawData.feedbackCS,
-        referrals: record.referrals || rawData.referrals || [],
+        referrals: record.referrals || (rawData.referrals as unknown[]) || [],
         // Segunda call (para relatório cirúrgico)
         analiseSegundaCall: record.second_call_analysis || rawData.analiseSegundaCall,
-    } as AnalysisResult;
+    };
+
+    // Retorna com cast seguro - raw_data já contém todos os campos específicos do tipo
+    return result as unknown as AnalysisResult;
 };
 
 /**
